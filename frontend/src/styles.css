@@ -171,6 +171,31 @@ h1 {
   background: #fdfefe;
 }
 
+.filter-bar.compact {
+  grid-template-columns: repeat(2, minmax(180px, 1fr)) auto;
+}
+
+.kit-form {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.kit-products {
+  display: grid;
+  gap: 10px;
+}
+
+.kit-product-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(120px, 180px) auto;
+  gap: 12px;
+  align-items: end;
+}
+
 .field {
   display: grid;
   gap: 6px;
@@ -242,6 +267,10 @@ h1 {
 
 .secondary-button:hover {
   background: #cbd5e1;
+}
+
+.compact-button {
+  padding: 0 12px;
 }
 
 .table-wrap {
@@ -424,7 +453,9 @@ tr:last-child td {
 
   .form-grid,
   .form-grid.wide,
-  .filter-bar {
+  .filter-bar,
+  .filter-bar.compact,
+  .kit-product-row {
     grid-template-columns: 1fr;
   }
 

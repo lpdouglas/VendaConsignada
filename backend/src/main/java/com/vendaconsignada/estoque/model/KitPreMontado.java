@@ -1,6 +1,5 @@
 package com.vendaconsignada.estoque.model;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -21,10 +20,9 @@ public class KitPreMontado {
     @Id
     private String id;
 
-    @NotBlank
     @Indexed(unique = true)
-    private String codigo;
+    private Long codigo;
 
     @NotEmpty
-    private List<String> produtos = new ArrayList<>();
+    private List<KitProduto> produtos = new ArrayList<>();
 }

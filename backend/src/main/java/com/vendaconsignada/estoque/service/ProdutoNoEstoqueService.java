@@ -42,14 +42,14 @@ public class ProdutoNoEstoqueService {
 
     public ProdutoNoEstoque atualizar(String codigoDoProduto, ProdutoNoEstoque estoque) {
         ProdutoNoEstoque atual = buscarPorCodigoDoProduto(codigoDoProduto);
-        estoque.setId(atual.getId());
-        estoque.setCodigoDoProduto(codigoDoProduto);
         validarProduto(codigoDoProduto);
-        return persistir(estoque);
+        atual.setQuantidade(estoque.getQuantidade());
+        return repository.save(atual);
     }
 
     public void excluir(String codigoDoProduto) {
-        repository.delete(buscarPorCodigoDoProduto(codigoDoProduto));
+        buscarPorCodigoDoProduto(codigoDoProduto);
+        repository.deleteByCodigoDoProduto(codigoDoProduto);
     }
 
     private void validarProduto(String codigoProduto) {

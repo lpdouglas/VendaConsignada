@@ -6,5 +6,6 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 import java.util.Optional;
 
 public interface KitPreMontadoRepository extends MongoRepository<KitPreMontado, String> {
-    Optional<KitPreMontado> findByCodigo(String codigo);
+    Optional<KitPreMontado> findByCodigo(Long codigo);
+    boolean existsByCodigo(Long codigo);
 }

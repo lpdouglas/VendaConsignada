@@ -30,7 +30,7 @@ public class KitPreMontadoController {
     }
 
     @GetMapping("/{codigo}")
-    public KitPreMontado buscar(@PathVariable String codigo) {
+    public KitPreMontado buscar(@PathVariable Long codigo) {
         return service.buscarPorCodigo(codigo);
     }
 
@@ -41,13 +41,13 @@ public class KitPreMontadoController {
     }
 
     @PutMapping("/{codigo}")
-    public KitPreMontado atualizar(@PathVariable String codigo, @Valid @RequestBody KitPreMontado kit) {
+    public KitPreMontado atualizar(@PathVariable Long codigo, @Valid @RequestBody KitPreMontado kit) {
         return service.atualizar(codigo, kit);
     }
 
     @DeleteMapping("/{codigo}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void excluir(@PathVariable String codigo) {
+    public void excluir(@PathVariable Long codigo) {
         service.excluir(codigo);
     }
 }

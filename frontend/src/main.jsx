@@ -25,8 +25,11 @@ const emptyProduto = {
   imagemFile: null,
 };
 const emptyEstoque = { codigoDoProduto: '', quantidade: 0 };
-const emptyKit = { codigo: '', produtos: '' };
+const emptyKit = { produtos: [{ codigo: '', quantidade: 1 }] };
+const emptyFiltroCategoria = { codigo: '', nome: '' };
 const emptyFiltroProduto = { codigo: '', nome: '', categoria: '', valorMin: '', valorMax: '' };
+const emptyFiltroEstoque = { codigo: '', nome: '', quantidadeMin: '', quantidadeMax: '' };
+const emptyFiltroKit = { codigo: '', produto: '' };
 
 function splitValues(value) {
   return value
@@ -43,6 +46,16 @@ function imageUrl(path) {
     return path;
   }
   return `${API_BASE_URL}${path}`;
+}
+
+function pathValue(value) {
+  return encodeURIComponent(value);
+}
+
+function kitProdutosText(produtos) {
+  return (produtos ?? [])
+    .map((produto) => `${produto.codigo} (${produto.quantidade})`)
+    .join(', ');
 }
 
 async function request(path, options = {}) {
@@ -81,7 +94,10 @@ function App() {
   const [estoqueForm, setEstoqueForm] = useState(emptyEstoque);
   const [kitForm, setKitForm] = useState(emptyKit);
   const [editing, setEditing] = useState({ categoria: null, produto: null, estoque: null, kit: null });
+  const [filtroCategoria, setFiltroCategoria] = useState(emptyFiltroCategoria);
   const [filtroProduto, setFiltroProduto] = useState(emptyFiltroProduto);
+  const [filtroEstoque, setFiltroEstoque] = useState(emptyFiltroEstoque);
+  const [filtroKit, setFiltroKit] = useState(emptyFiltroKit);
   const [produtoVisualizado, setProdutoVisualizado] = useState(null);
   const [status, setStatus] = useState({ type: 'idle', text: 'Conectando com a API em localhost:8080' });
 
@@ -89,6 +105,14 @@ function App() {
     () => new Map(produtos.map((produto) => [produto.codigo, produto])),
     [produtos],
   );
+
+  const categoriasFiltradas = useMemo(() => {
+    return categorias.filter((categoria) => {
+      const codigoOk = categoria.codigo.toLowerCase().includes(filtroCategoria.codigo.toLowerCase());
+      const nomeOk = categoria.nome.toLowerCase().includes(filtroCategoria.nome.toLowerCase());
+      return codigoOk && nomeOk;
+    });
+  }, [categorias, filtroCategoria]);
 
   const produtosFiltrados = useMemo(() => {
     return produtos.filter((produto) => {
@@ -101,6 +125,26 @@ function App() {
       return codigoOk && nomeOk && categoriaOk && minOk && maxOk;
     });
   }, [produtos, filtroProduto]);
+
+  const estoqueFiltrado = useMemo(() => {
+    return estoque.filter((item) => {
+      const produto = produtoMap.get(item.codigoDoProduto);
+      const quantidade = Number(item.quantidade);
+      const codigoOk = item.codigoDoProduto.toLowerCase().includes(filtroEstoque.codigo.toLowerCase());
+      const nomeOk = (produto?.nome ?? '').toLowerCase().includes(filtroEstoque.nome.toLowerCase());
+      const minOk = filtroEstoque.quantidadeMin === '' || quantidade >= Number(filtroEstoque.quantidadeMin);
+      const maxOk = filtroEstoque.quantidadeMax === '' || quantidade <= Number(filtroEstoque.quantidadeMax);
+      return codigoOk && nomeOk && minOk && maxOk;
+    });
+  }, [estoque, produtoMap, filtroEstoque]);
+
+  const kitsFiltrados = useMemo(() => {
+    return kits.filter((kit) => {
+      const codigoOk = String(kit.codigo).includes(filtroKit.codigo);
+      const produtoOk = !filtroKit.produto || (kit.produtos ?? []).some((produto) => produto.codigo === filtroKit.produto);
+      return codigoOk && produtoOk;
+    });
+  }, [kits, filtroKit]);
 
   async function loadData() {
     const [categoriasData, produtosData, estoqueData, kitsData] = await Promise.all([
@@ -126,13 +170,13 @@ function App() {
     }
     const formData = new FormData();
     formData.append('imagem', arquivo);
-    await request(`/produtos/${codigo}/imagem`, { method: 'POST', body: formData });
+    await request(`/produtos/${pathValue(codigo)}/imagem`, { method: 'POST', body: formData });
   }
 
   async function submitCategoria(event) {
     event.preventDefault();
     const method = editing.categoria ? 'PUT' : 'POST';
-    const path = editing.categoria ? `/categorias/${editing.categoria}` : '/categorias';
+    const path = editing.categoria ? `/categorias/${pathValue(editing.categoria)}` : '/categorias';
     await request(path, { method, body: JSON.stringify(categoriaForm) });
     setCategoriaForm(emptyCategoria);
     setEditing({ ...editing, categoria: null });
@@ -152,7 +196,7 @@ function App() {
       valor: Number(produtoForm.valor),
     };
     const method = editing.produto ? 'PUT' : 'POST';
-    const path = editing.produto ? `/produtos/${editing.produto}` : '/produtos';
+    const path = editing.produto ? `/produtos/${pathValue(editing.produto)}` : '/produtos';
     const produtoSalvo = await request(path, { method, body: JSON.stringify(payload) });
     await uploadProdutoImagem(produtoSalvo.codigo, produtoForm.imagemFile);
     setProdutoForm(emptyProduto);
@@ -165,7 +209,7 @@ function App() {
     event.preventDefault();
     const payload = { ...estoqueForm, quantidade: Number(estoqueForm.quantidade) };
     const method = editing.estoque ? 'PUT' : 'POST';
-    const path = editing.estoque ? `/estoque/${editing.estoque}` : '/estoque';
+    const path = editing.estoque ? `/estoque/${pathValue(editing.estoque)}` : '/estoque';
     await request(path, { method, body: JSON.stringify(payload) });
     setEstoqueForm(emptyEstoque);
     setEditing({ ...editing, estoque: null });
@@ -175,9 +219,13 @@ function App() {
 
   async function submitKit(event) {
     event.preventDefault();
-    const payload = { codigo: kitForm.codigo, produtos: splitValues(kitForm.produtos) };
+    const payload = {
+      produtos: kitForm.produtos
+        .filter((produto) => produto.codigo)
+        .map((produto) => ({ codigo: produto.codigo, quantidade: Number(produto.quantidade) })),
+    };
     const method = editing.kit ? 'PUT' : 'POST';
-    const path = editing.kit ? `/kits-pre-montados/${editing.kit}` : '/kits-pre-montados';
+    const path = editing.kit ? `/kits-pre-montados/${pathValue(editing.kit)}` : '/kits-pre-montados';
     await request(path, { method, body: JSON.stringify(payload) });
     setKitForm(emptyKit);
     setEditing({ ...editing, kit: null });
@@ -221,8 +269,30 @@ function App() {
   }
 
   function editKit(kit) {
-    setKitForm({ codigo: kit.codigo, produtos: kit.produtos.join(', ') });
+    setKitForm({
+      produtos: (kit.produtos ?? []).map((produto) => ({
+        codigo: produto.codigo,
+        quantidade: produto.quantidade,
+      })),
+    });
     setEditing({ ...editing, kit: kit.codigo });
+  }
+
+  function addKitProduto() {
+    setKitForm({ produtos: [...kitForm.produtos, { codigo: '', quantidade: 1 }] });
+  }
+
+  function updateKitProduto(index, field, value) {
+    setKitForm({
+      produtos: kitForm.produtos.map((produto, currentIndex) => (
+        currentIndex === index ? { ...produto, [field]: value } : produto
+      )),
+    });
+  }
+
+  function removeKitProduto(index) {
+    const produtosAtualizados = kitForm.produtos.filter((_, currentIndex) => currentIndex !== index);
+    setKitForm({ produtos: produtosAtualizados.length > 0 ? produtosAtualizados : [{ codigo: '', quantidade: 1 }] });
   }
 
   function cancelEdit(type) {
@@ -273,14 +343,22 @@ function App() {
               <Field label="Nome" value={categoriaForm.nome} onChange={(nome) => setCategoriaForm({ ...categoriaForm, nome })} required />
               <FormActions editing={Boolean(editing.categoria)} onCancel={() => cancelEdit('categoria')} />
             </form>
+            <div className="filter-bar compact">
+              <Field label="Buscar codigo" value={filtroCategoria.codigo} onChange={(codigo) => setFiltroCategoria({ ...filtroCategoria, codigo })} />
+              <Field label="Buscar nome" value={filtroCategoria.nome} onChange={(nome) => setFiltroCategoria({ ...filtroCategoria, nome })} />
+              <button className="secondary-button" type="button" onClick={() => setFiltroCategoria(emptyFiltroCategoria)}>
+                <X aria-hidden="true" />
+                <span>Limpar</span>
+              </button>
+            </div>
             <DataTable
               columns={['Codigo', 'Nome', 'Acoes']}
-              rows={categorias.map((categoria) => [
+              rows={categoriasFiltradas.map((categoria) => [
                 categoria.codigo,
                 categoria.nome,
                 <ActionGroup key="actions">
                   <IconButton icon={Edit3} label="Editar" onClick={() => editCategoria(categoria)} />
-                  <IconButton icon={Trash2} label="Excluir" tone="danger" onClick={() => run(() => remove(`/categorias/${categoria.codigo}`, 'Categoria excluida.'))} />
+                  <IconButton icon={Trash2} label="Excluir" tone="danger" onClick={() => run(() => remove(`/categorias/${pathValue(categoria.codigo)}`, 'Categoria excluida.'))} />
                 </ActionGroup>,
               ])}
             />
@@ -326,7 +404,7 @@ function App() {
                 <ActionGroup key="actions">
                   <IconButton icon={Eye} label="Visualizar" onClick={() => setProdutoVisualizado(produto)} />
                   <IconButton icon={Edit3} label="Editar" onClick={() => editProduto(produto)} />
-                  <IconButton icon={Trash2} label="Excluir" tone="danger" onClick={() => run(() => remove(`/produtos/${produto.codigo}`, 'Produto excluido.'))} />
+                  <IconButton icon={Trash2} label="Excluir" tone="danger" onClick={() => run(() => remove(`/produtos/${pathValue(produto.codigo)}`, 'Produto excluido.'))} />
                 </ActionGroup>,
               ])}
             />
@@ -348,15 +426,25 @@ function App() {
               <Field label={editing.estoque ? 'Quantidade total' : 'Quantidade a adicionar'} type="number" min="0" value={estoqueForm.quantidade} onChange={(quantidade) => setEstoqueForm({ ...estoqueForm, quantidade })} required />
               <FormActions editing={Boolean(editing.estoque)} onCancel={() => cancelEdit('estoque')} />
             </form>
+            <div className="filter-bar">
+              <Field label="Buscar codigo" value={filtroEstoque.codigo} onChange={(codigo) => setFiltroEstoque({ ...filtroEstoque, codigo })} />
+              <Field label="Buscar nome" value={filtroEstoque.nome} onChange={(nome) => setFiltroEstoque({ ...filtroEstoque, nome })} />
+              <Field label="Qtd. min." type="number" value={filtroEstoque.quantidadeMin} onChange={(quantidadeMin) => setFiltroEstoque({ ...filtroEstoque, quantidadeMin })} />
+              <Field label="Qtd. max." type="number" value={filtroEstoque.quantidadeMax} onChange={(quantidadeMax) => setFiltroEstoque({ ...filtroEstoque, quantidadeMax })} />
+              <button className="secondary-button" type="button" onClick={() => setFiltroEstoque(emptyFiltroEstoque)}>
+                <X aria-hidden="true" />
+                <span>Limpar</span>
+              </button>
+            </div>
             <DataTable
               columns={['Produto', 'Nome', 'Quantidade', 'Acoes']}
-              rows={estoque.map((item) => [
+              rows={estoqueFiltrado.map((item) => [
                 item.codigoDoProduto,
                 produtoMap.get(item.codigoDoProduto)?.nome ?? '-',
                 item.quantidade,
                 <ActionGroup key="actions">
                   <IconButton icon={Edit3} label="Editar" onClick={() => editEstoque(item)} />
-                  <IconButton icon={Trash2} label="Excluir" tone="danger" onClick={() => run(() => remove(`/estoque/${item.codigoDoProduto}`, 'Item de estoque excluido.'))} />
+                  <IconButton icon={Trash2} label="Excluir" tone="danger" onClick={() => run(() => remove(`/estoque/${pathValue(item.codigoDoProduto)}`, 'Item de estoque excluido.'))} />
                 </ActionGroup>,
               ])}
             />
@@ -365,19 +453,70 @@ function App() {
 
         {activeTab === 'kits' && (
           <CadastroSection title="Cadastro de kit pre montado">
-            <form onSubmit={(event) => run(() => submitKit(event))} className="form-grid">
-              <Field label="Codigo" value={kitForm.codigo} onChange={(codigo) => setKitForm({ ...kitForm, codigo })} required disabled={Boolean(editing.kit)} />
-              <Field label="Produtos" value={kitForm.produtos} onChange={(produtosValue) => setKitForm({ ...kitForm, produtos: produtosValue })} placeholder="PROD-001, PROD-002" required />
-              <FormActions editing={Boolean(editing.kit)} onCancel={() => cancelEdit('kit')} />
+            <form onSubmit={(event) => run(() => submitKit(event))} className="kit-form">
+              {editing.kit && <Field label="Codigo gerado" value={editing.kit} onChange={() => {}} disabled />}
+              <div className="kit-products">
+                {kitForm.produtos.map((produtoKit, index) => (
+                  <div className="kit-product-row" key={index}>
+                    <label className="field">
+                      <span>Produto do estoque</span>
+                      <select value={produtoKit.codigo} onChange={(event) => updateKitProduto(index, 'codigo', event.target.value)} required>
+                        <option value="">Selecione</option>
+                        {estoque.map((item) => {
+                          const produto = produtoMap.get(item.codigoDoProduto);
+                          return (
+                            <option key={item.codigoDoProduto} value={item.codigoDoProduto}>
+                              {item.codigoDoProduto} - {produto?.nome ?? 'Sem nome'} ({item.quantidade} em estoque)
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </label>
+                    <Field label="Quantidade" type="number" min="1" value={produtoKit.quantidade} onChange={(quantidade) => updateKitProduto(index, 'quantidade', quantidade)} required />
+                    <button className="secondary-button compact-button" type="button" onClick={() => removeKitProduto(index)}>
+                      <X aria-hidden="true" />
+                      <span>Remover</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="form-actions">
+                <button className="secondary-button" type="button" onClick={addKitProduto}>
+                  <PackagePlus aria-hidden="true" />
+                  <span>Produto</span>
+                </button>
+                <FormActions editing={Boolean(editing.kit)} onCancel={() => cancelEdit('kit')} />
+              </div>
             </form>
+            <div className="filter-bar compact">
+              <Field label="Buscar codigo" value={filtroKit.codigo} onChange={(codigo) => setFiltroKit({ ...filtroKit, codigo })} />
+              <label className="field">
+                <span>Produto</span>
+                <select value={filtroKit.produto} onChange={(event) => setFiltroKit({ ...filtroKit, produto: event.target.value })}>
+                  <option value="">Todos</option>
+                  {estoque.map((item) => {
+                    const produto = produtoMap.get(item.codigoDoProduto);
+                    return (
+                      <option key={item.codigoDoProduto} value={item.codigoDoProduto}>
+                        {item.codigoDoProduto} - {produto?.nome ?? 'Sem nome'}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+              <button className="secondary-button" type="button" onClick={() => setFiltroKit(emptyFiltroKit)}>
+                <X aria-hidden="true" />
+                <span>Limpar</span>
+              </button>
+            </div>
             <DataTable
               columns={['Codigo', 'Produtos', 'Acoes']}
-              rows={kits.map((kit) => [
+              rows={kitsFiltrados.map((kit) => [
                 kit.codigo,
-                kit.produtos.join(', '),
+                kitProdutosText(kit.produtos),
                 <ActionGroup key="actions">
                   <IconButton icon={Edit3} label="Editar" onClick={() => editKit(kit)} />
-                  <IconButton icon={Trash2} label="Excluir" tone="danger" onClick={() => run(() => remove(`/kits-pre-montados/${kit.codigo}`, 'Kit excluido.'))} />
+                  <IconButton icon={Trash2} label="Excluir" tone="danger" onClick={() => run(() => remove(`/kits-pre-montados/${pathValue(kit.codigo)}`, 'Kit excluido.'))} />
                 </ActionGroup>,
               ])}
             />
@@ -417,7 +556,7 @@ function SelectCategoria({ label = 'Categoria', value, onChange, categorias, req
     <label className="field">
       <span>{label}</span>
       <select value={value} onChange={(event) => onChange(event.target.value)} required={required}>
-        <option value="">Todas</option>
+        <option value="">{required ? 'Selecione' : 'Todas'}</option>
         {categorias.map((categoria) => (
           <option key={categoria.codigo} value={categoria.codigo}>{categoria.nome}</option>
         ))}
