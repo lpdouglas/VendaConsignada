@@ -10,7 +10,6 @@ const tabs = [
   { key: 'categorias', label: 'Categorias', icon: Tags },
   { key: 'produtos', label: 'Produtos', icon: PackagePlus },
   { key: 'estoque', label: 'Estoque', icon: Boxes },
-  { key: 'kits', label: 'Kits', icon: Layers3 },
 ];
 
 const emptyCategoria = { codigo: '', nome: '' };
