@@ -37,8 +37,17 @@ public class ProdutoService {
         Produto atual = buscarPorCodigo(codigo);
         produto.setId(atual.getId());
         produto.setCodigo(codigo);
+        if (produto.getImagem() == null || produto.getImagem().isBlank()) {
+            produto.setImagem(atual.getImagem());
+        }
         validarCategoria(produto.getCategoria());
         return persistir(produto);
+    }
+
+    public Produto atualizarImagem(String codigo, String imagem) {
+        Produto produto = buscarPorCodigo(codigo);
+        produto.setImagem(imagem);
+        return repository.save(produto);
     }
 
     public void excluir(String codigo) {

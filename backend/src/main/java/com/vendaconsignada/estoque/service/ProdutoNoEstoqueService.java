@@ -28,9 +28,16 @@ public class ProdutoNoEstoqueService {
     }
 
     public ProdutoNoEstoque salvar(ProdutoNoEstoque estoque) {
-        estoque.setId(null);
         validarProduto(estoque.getCodigoDoProduto());
-        return persistir(estoque);
+        return repository.findByCodigoDoProduto(estoque.getCodigoDoProduto())
+                .map(atual -> {
+                    atual.setQuantidade(atual.getQuantidade() + estoque.getQuantidade());
+                    return repository.save(atual);
+                })
+                .orElseGet(() -> {
+                    estoque.setId(null);
+                    return persistir(estoque);
+                });
     }
 
     public ProdutoNoEstoque atualizar(String codigoDoProduto, ProdutoNoEstoque estoque) {

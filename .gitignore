@@ -33,3 +33,6 @@ Thumbs.db
 
 # Mongo memory server cache
 node_modules/.cache/
+
+# Local uploaded files
+uploads/
