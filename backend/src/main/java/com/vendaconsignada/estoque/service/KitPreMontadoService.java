@@ -2,6 +2,7 @@ package com.vendaconsignada.estoque.service;
 
 import com.vendaconsignada.estoque.model.KitPreMontado;
 import com.vendaconsignada.estoque.model.KitProduto;
+import com.vendaconsignada.estoque.model.ProdutoNoEstoque;
 import com.vendaconsignada.estoque.repository.KitPreMontadoRepository;
 import com.vendaconsignada.estoque.repository.ProdutoNoEstoqueRepository;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -36,32 +38,77 @@ public class KitPreMontadoService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Kit pre montado nao encontrado"));
     }
 
-    public KitPreMontado salvar(KitPreMontado kit) {
+    public synchronized KitPreMontado salvar(KitPreMontado kit) {
         migrarKitsLegados();
         kit.setId(null);
         kit.setCodigo(proximoCodigoDisponivel());
-        validarProdutos(kit.getProdutos());
+        validarProdutosNoEstoque(kit.getProdutos());
+        aplicarMovimentoEstoque(Map.of(), agruparProdutos(kit.getProdutos()));
         return persistir(kit);
     }
 
-    public KitPreMontado atualizar(Long codigo, KitPreMontado kit) {
+    public synchronized KitPreMontado atualizar(Long codigo, KitPreMontado kit) {
         KitPreMontado atual = buscarPorCodigo(codigo);
         kit.setId(atual.getId());
         kit.setCodigo(codigo);
-        validarProdutos(kit.getProdutos());
+        validarProdutosNoEstoque(kit.getProdutos());
+        aplicarMovimentoEstoque(agruparProdutos(atual.getProdutos()), agruparProdutos(kit.getProdutos()));
         return persistir(kit);
     }
 
-    public void excluir(Long codigo) {
-        repository.delete(buscarPorCodigo(codigo));
+    public synchronized void excluir(Long codigo) {
+        KitPreMontado kit = buscarPorCodigo(codigo);
+        aplicarMovimentoEstoque(agruparProdutos(kit.getProdutos()), Map.of());
+        repository.delete(kit);
     }
 
-    private void validarProdutos(List<KitProduto> produtos) {
+    private void validarProdutosNoEstoque(List<KitProduto> produtos) {
         for (KitProduto produto : produtos) {
             if (!estoqueRepository.existsByCodigoDoProduto(produto.getCodigo())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Produto do kit nao existe no estoque: " + produto.getCodigo());
             }
         }
+    }
+
+    private Map<String, Long> agruparProdutos(List<KitProduto> produtos) {
+        Map<String, Long> agrupados = new HashMap<>();
+        for (KitProduto produto : produtos) {
+            agrupados.merge(produto.getCodigo(), produto.getQuantidade(), Long::sum);
+        }
+        return agrupados;
+    }
+
+    private void aplicarMovimentoEstoque(Map<String, Long> produtosAtuais, Map<String, Long> produtosNovos) {
+        Map<String, Long> deltas = new HashMap<>();
+        produtosAtuais.forEach((codigo, quantidade) -> deltas.merge(codigo, -quantidade, Long::sum));
+        produtosNovos.forEach((codigo, quantidade) -> deltas.merge(codigo, quantidade, Long::sum));
+
+        for (Map.Entry<String, Long> delta : deltas.entrySet()) {
+            if (delta.getValue() > 0) {
+                ProdutoNoEstoque estoque = buscarEstoque(delta.getKey());
+                if (estoque.getQuantidade() < delta.getValue()) {
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST,
+                            "Estoque insuficiente para " + delta.getKey() + ". Disponivel: " + estoque.getQuantidade()
+                    );
+                }
+            }
+        }
+
+        for (Map.Entry<String, Long> delta : deltas.entrySet()) {
+            if (delta.getValue() == 0) {
+                continue;
+            }
+
+            ProdutoNoEstoque estoque = buscarEstoque(delta.getKey());
+            estoque.setQuantidade(estoque.getQuantidade() - delta.getValue());
+            estoqueRepository.save(estoque);
+        }
+    }
+
+    private ProdutoNoEstoque buscarEstoque(String codigoProduto) {
+        return estoqueRepository.findByCodigoDoProduto(codigoProduto)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Produto do kit nao existe no estoque: " + codigoProduto));
     }
 
     private Long proximoCodigoDisponivel() {

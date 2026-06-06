@@ -58,6 +58,16 @@ function kitProdutosText(produtos) {
     .join(', ');
 }
 
+function agruparKitProdutos(produtos) {
+  return produtos.reduce((acc, produto) => {
+    if (!produto.codigo) {
+      return acc;
+    }
+    acc[produto.codigo] = (acc[produto.codigo] ?? 0) + Number(produto.quantidade || 0);
+    return acc;
+  }, {});
+}
+
 async function request(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const response = await fetch(`${API_URL}${path}`, {
@@ -146,6 +156,38 @@ function App() {
     });
   }, [kits, filtroKit]);
 
+  const kitAtual = useMemo(
+    () => kits.find((kit) => String(kit.codigo) === String(editing.kit)),
+    [kits, editing.kit],
+  );
+
+  const kitValidation = useMemo(() => {
+    const atualPorProduto = agruparKitProdutos(kitAtual?.produtos ?? []);
+    const novoPorProduto = agruparKitProdutos(kitForm.produtos);
+    const errors = [];
+
+    if (Object.keys(novoPorProduto).length === 0) {
+      errors.push('Selecione ao menos um produto do estoque.');
+    }
+
+    for (const [codigo, quantidade] of Object.entries(novoPorProduto)) {
+      const estoqueItem = estoque.find((item) => item.codigoDoProduto === codigo);
+      const disponivel = Number(estoqueItem?.quantidade ?? 0) + Number(atualPorProduto[codigo] ?? 0);
+
+      if (quantidade <= 0) {
+        errors.push(`Quantidade invalida para ${codigo}.`);
+      }
+
+      if (!estoqueItem) {
+        errors.push(`Produto ${codigo} nao esta no estoque.`);
+      } else if (quantidade > disponivel) {
+        errors.push(`Estoque insuficiente para ${codigo}. Disponivel: ${disponivel}.`);
+      }
+    }
+
+    return { valid: errors.length === 0, errors };
+  }, [kitForm.produtos, kitAtual, estoque]);
+
   async function loadData() {
     const [categoriasData, produtosData, estoqueData, kitsData] = await Promise.all([
       request('/categorias'),
@@ -219,6 +261,10 @@ function App() {
 
   async function submitKit(event) {
     event.preventDefault();
+    if (!kitValidation.valid) {
+      setStatus({ type: 'error', text: kitValidation.errors[0] });
+      return;
+    }
     const payload = {
       produtos: kitForm.produtos
         .filter((produto) => produto.codigo)
@@ -293,6 +339,12 @@ function App() {
   function removeKitProduto(index) {
     const produtosAtualizados = kitForm.produtos.filter((_, currentIndex) => currentIndex !== index);
     setKitForm({ produtos: produtosAtualizados.length > 0 ? produtosAtualizados : [{ codigo: '', quantidade: 1 }] });
+  }
+
+  function disponibilidadeParaKit(codigoProduto) {
+    const estoqueItem = estoque.find((item) => item.codigoDoProduto === codigoProduto);
+    const atualPorProduto = agruparKitProdutos(kitAtual?.produtos ?? []);
+    return Number(estoqueItem?.quantidade ?? 0) + Number(atualPorProduto[codigoProduto] ?? 0);
   }
 
   function cancelEdit(type) {
@@ -466,7 +518,7 @@ function App() {
                           const produto = produtoMap.get(item.codigoDoProduto);
                           return (
                             <option key={item.codigoDoProduto} value={item.codigoDoProduto}>
-                              {item.codigoDoProduto} - {produto?.nome ?? 'Sem nome'} ({item.quantidade} em estoque)
+                              {item.codigoDoProduto} - {produto?.nome ?? 'Sem nome'} ({disponibilidadeParaKit(item.codigoDoProduto)} disponivel)
                             </option>
                           );
                         })}
@@ -485,8 +537,13 @@ function App() {
                   <PackagePlus aria-hidden="true" />
                   <span>Produto</span>
                 </button>
-                <FormActions editing={Boolean(editing.kit)} onCancel={() => cancelEdit('kit')} />
+                <FormActions editing={Boolean(editing.kit)} onCancel={() => cancelEdit('kit')} disabled={!kitValidation.valid} />
               </div>
+              {kitValidation.errors.length > 0 && (
+                <div className="validation-box">
+                  {kitValidation.errors.map((error) => <span key={error}>{error}</span>)}
+                </div>
+              )}
             </form>
             <div className="filter-bar compact">
               <Field label="Buscar codigo" value={filtroKit.codigo} onChange={(codigo) => setFiltroKit({ ...filtroKit, codigo })} />
@@ -565,10 +622,10 @@ function SelectCategoria({ label = 'Categoria', value, onChange, categorias, req
   );
 }
 
-function FormActions({ editing, onCancel }) {
+function FormActions({ editing, onCancel, disabled = false }) {
   return (
     <div className="form-actions">
-      <button className="submit-button" type="submit">
+      <button className="submit-button" type="submit" disabled={disabled}>
         <Save aria-hidden="true" />
         <span>{editing ? 'Salvar' : 'Cadastrar'}</span>
       </button>
