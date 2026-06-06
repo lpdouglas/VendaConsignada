@@ -1,0 +1,12 @@
+{
+  "name": "venda-consignada-dev-tools",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev:mongo": "node scripts/dev-mongo.mjs"
+  },
+  "dependencies": {
+    "mongodb-memory-server": "^10.2.0"
+  }
+}

@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: venda-consignada-api
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/venda-consignada?serverSelectionTimeoutMS=2000}
+
+server:
+  port: ${PORT:8080}

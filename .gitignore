@@ -1,0 +1,35 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.yaml
+
+# Logs
+*.log
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# React/Vite
+frontend/dist/
+frontend/.vite/
+
+# Java/Gradle
+backend/build/
+backend/.gradle/
+.gradle/
+
+# IDE and OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Mongo memory server cache
+node_modules/.cache/
