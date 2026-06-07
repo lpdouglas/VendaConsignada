@@ -1,9 +1,7 @@
 package com.vendaconsignada.estoque.model;
 
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -37,11 +35,8 @@ public class Revendedor {
     @NotBlank
     private String cpf;
 
-    @Valid
-    @NotNull
     private Endereco endereco;
 
-    @NotBlank
     private String telefone;
 
     @Email
@@ -56,7 +51,6 @@ public class Revendedor {
     @Field("cadastro-ativo")
     private Boolean cadastroAtivo = true;
 
-    @NotNull
     @Field("situacao-cadastral")
     private SituacaoCadastral situacaoCadastral = SituacaoCadastral.NORMAL;
 }

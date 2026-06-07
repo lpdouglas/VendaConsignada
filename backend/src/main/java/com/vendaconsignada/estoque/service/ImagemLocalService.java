@@ -18,6 +18,7 @@ import java.util.UUID;
 public class ImagemLocalService {
 
     private static final Set<String> EXTENSOES_PERMITIDAS = Set.of("jpg", "jpeg", "png", "webp", "gif");
+    private static final long MAX_IMAGE_SIZE = 2 * 1024 * 1024;
 
     @Value("${app.upload-dir:uploads}")
     private String uploadDir;
@@ -25,6 +26,9 @@ public class ImagemLocalService {
     public String armazenar(String pastaRelativa, String prefixo, MultipartFile arquivo) {
         if (arquivo == null || arquivo.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Arquivo de imagem nao informado");
+        }
+        if (arquivo.getSize() > MAX_IMAGE_SIZE) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Imagem deve ter no maximo 2MB");
         }
 
         String original = StringUtils.cleanPath(arquivo.getOriginalFilename() == null ? "" : arquivo.getOriginalFilename());

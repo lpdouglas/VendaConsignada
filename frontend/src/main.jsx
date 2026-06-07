@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Boxes, Edit3, Eye, PackagePlus, Save, Search, Tags, Trash2, UserPlus, Users, X } from 'lucide-react';
+import { Boxes, Edit3, Eye, PackagePlus, Save, Tags, Trash2, Users, X } from 'lucide-react';
 import './styles.css';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api';
@@ -22,6 +22,7 @@ const emptyRevendedor = {
   cadastroAtivo: true,
   situacaoCadastral: 'NORMAL',
 };
+const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
 const emptyKitRevendedor = {
   codigoDoRevendedor: '',
   dataDeRetirada: new Date().toISOString().slice(0, 10),
@@ -59,6 +60,31 @@ function imageUrl(path) {
 
 function normalizeCpf(cpf) {
   return cpf.replace(/\D/g, '');
+}
+
+function maskCpf(value) {
+  return normalizeCpf(value)
+    .slice(0, 11)
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+}
+
+function maskTelefone(value) {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 10) {
+    return digits.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{4})(\d)/, '$1-$2');
+  }
+  return digits.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2');
+}
+
+function isValidEmail(email) {
+  return !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isValidTelefone(telefone) {
+  const digits = telefone.replace(/\D/g, '');
+  return !digits || digits.length === 10 || digits.length === 11;
 }
 
 function isValidCpf(cpf) {
@@ -114,7 +140,9 @@ function App() {
   const [editing, setEditing] = useState({ categoria: null, produto: null, estoque: null, revendedor: null });
   const [filtros, setFiltros] = useState(emptyFiltros);
   const [produtoVisualizado, setProdutoVisualizado] = useState(null);
-  const [status, setStatus] = useState({ type: 'idle', text: 'Conectando com a API em localhost:8080' });
+  const [kitsAtivosRevendedor, setKitsAtivosRevendedor] = useState(null);
+  const [fieldStatus, setFieldStatus] = useState({});
+  const [toast, setToast] = useState({ type: 'idle', text: 'Conectando com a API em localhost:8080' });
 
   const produtoMap = useMemo(() => new Map(produtos.map((produto) => [produto.codigo, produto])), [produtos]);
   const estoqueMap = useMemo(() => new Map(estoque.map((item) => [item.codigoDoProduto, item])), [estoque]);
@@ -194,23 +222,63 @@ function App() {
     setEstoque(estoqueData);
     setRevendedores(revendedoresData);
     setKitsRevendedor(kitsData);
-    setStatus({ type: 'success', text: 'Dados carregados.' });
+    setToast({ type: 'success', text: 'Dados carregados.' });
   }
 
   useEffect(() => {
-    loadData().catch((error) => setStatus({ type: 'error', text: error.message }));
+    loadData().catch((error) => setToast({ type: 'error', text: error.message }));
   }, []);
 
+  useEffect(() => {
+    if (toast.type === 'idle') return undefined;
+    const timeout = window.setTimeout(() => setToast({ type: 'idle', text: '' }), 4500);
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
+
   function run(action) {
-    setStatus({ type: 'idle', text: 'Salvando...' });
-    action().catch((error) => setStatus({ type: 'error', text: error.message }));
+    setToast({ type: 'idle', text: 'Salvando...' });
+    action().catch((error) => setToast({ type: 'error', text: error.message }));
   }
 
   async function uploadImagem(path, fieldName, arquivo) {
     if (!arquivo) return;
+    if (arquivo.size > MAX_IMAGE_SIZE) {
+      throw new Error('Imagem deve ter no maximo 2MB.');
+    }
     const formData = new FormData();
     formData.append(fieldName, arquivo);
     await request(path, { method: 'POST', body: formData });
+  }
+
+  function setRevendedorField(field, value) {
+    setRevendedorForm({ ...revendedorForm, [field]: value });
+  }
+
+  function validarCampoRevendedor(field) {
+    const updates = { ...fieldStatus };
+    if (field === 'cpf') {
+      updates.cpf = isValidCpf(revendedorForm.cpf) ? 'ok' : 'CPF invalido';
+    }
+    if (field === 'email') {
+      updates.email = isValidEmail(revendedorForm.email) ? 'ok' : 'Email invalido';
+    }
+    if (field === 'telefone') {
+      updates.telefone = isValidTelefone(revendedorForm.telefone) ? 'ok' : 'Telefone invalido';
+    }
+    setFieldStatus(updates);
+  }
+
+  function selectRevendedorImagem(file) {
+    if (!file) {
+      setRevendedorForm({ ...revendedorForm, imagemFile: null });
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      setRevendedorForm({ ...revendedorForm, imagemFile: null });
+      setToast({ type: 'error', text: 'Imagem deve ter no maximo 2MB.' });
+      return;
+    }
+    setRevendedorForm({ ...revendedorForm, imagemFile: file });
   }
 
   async function submitCategoria(event) {
@@ -221,7 +289,7 @@ function App() {
     setCategoriaForm(emptyCategoria);
     setEditing({ ...editing, categoria: null });
     await loadData();
-    setStatus({ type: 'success', text: editing.categoria ? 'Categoria atualizada.' : 'Categoria cadastrada.' });
+    setToast({ type: 'success', text: editing.categoria ? 'Categoria atualizada.' : 'Categoria cadastrada.' });
   }
 
   async function submitProduto(event) {
@@ -242,7 +310,7 @@ function App() {
     setProdutoForm(emptyProduto);
     setEditing({ ...editing, produto: null });
     await loadData();
-    setStatus({ type: 'success', text: editing.produto ? 'Produto atualizado.' : 'Produto cadastrado.' });
+    setToast({ type: 'success', text: editing.produto ? 'Produto atualizado.' : 'Produto cadastrado.' });
   }
 
   async function submitEstoque(event) {
@@ -254,35 +322,53 @@ function App() {
     setEstoqueForm(emptyEstoque);
     setEditing({ ...editing, estoque: null });
     await loadData();
-    setStatus({ type: 'success', text: editing.estoque ? 'Estoque atualizado.' : 'Produto incluido no estoque.' });
+    setToast({ type: 'success', text: editing.estoque ? 'Estoque atualizado.' : 'Produto incluido no estoque.' });
   }
 
   async function submitRevendedor(event) {
     event.preventDefault();
     if (!isValidCpf(revendedorForm.cpf)) {
-      setStatus({ type: 'error', text: 'CPF invalido.' });
+      setToast({ type: 'error', text: 'CPF invalido.' });
+      return;
+    }
+    const cpfNormalizado = normalizeCpf(revendedorForm.cpf);
+    const cpfJaUsado = revendedores.some((revendedor) => (
+      revendedor.cpf === cpfNormalizado && String(revendedor.codigoDoRevendedor) !== String(editing.revendedor)
+    ));
+    if (cpfJaUsado) {
+      setToast({ type: 'error', text: 'CPF ja foi utilizado por outro revendedor.' });
+      return;
+    }
+    if (!isValidEmail(revendedorForm.email)) {
+      setToast({ type: 'error', text: 'Email invalido.' });
+      return;
+    }
+    if (!isValidTelefone(revendedorForm.telefone)) {
+      setToast({ type: 'error', text: 'Telefone invalido.' });
       return;
     }
 
     const payload = {
       ...revendedorForm,
-      cpf: normalizeCpf(revendedorForm.cpf),
+      cpf: cpfNormalizado,
       imagemFile: undefined,
+      cadastroAtivo: editing.revendedor ? revendedorForm.cadastroAtivo : true,
     };
     const method = editing.revendedor ? 'PUT' : 'POST';
     const path = editing.revendedor ? `/revendedores/${editing.revendedor}` : '/revendedores';
     const salvo = await request(path, { method, body: JSON.stringify(payload) });
     await uploadImagem(`/revendedores/${salvo.codigoDoRevendedor}/imagem`, 'imagem', revendedorForm.imagemFile);
     setRevendedorForm(emptyRevendedor);
+    setFieldStatus({});
     setEditing({ ...editing, revendedor: null });
     await loadData();
-    setStatus({ type: 'success', text: editing.revendedor ? 'Revendedor atualizado.' : 'Revendedor cadastrado.' });
+    setToast({ type: 'success', text: editing.revendedor ? 'Revendedor atualizado.' : 'Revendedor cadastrado.' });
   }
 
   async function submitKitRevendedor(event) {
     event.preventDefault();
     if (!kitValidation.valid) {
-      setStatus({ type: 'error', text: kitValidation.errors[0] });
+      setToast({ type: 'error', text: kitValidation.errors[0] });
       return;
     }
 
@@ -297,13 +383,13 @@ function App() {
     const salvo = await request('/kits-revendedor', { method: 'POST', body: JSON.stringify(payload) });
     setKitForm({ ...emptyKitRevendedor, dataDeRetirada: new Date().toISOString().slice(0, 10), dataDeAcerto: addDays(new Date(), 60).toISOString().slice(0, 10) });
     await loadData();
-    setStatus({ type: 'success', text: `Kit ${salvo.codigoDoKit} gerado e estoque atualizado.` });
+    setToast({ type: 'success', text: `Kit ${salvo.codigoDoKit} gerado e estoque atualizado.` });
   }
 
   async function remove(path, message) {
     await request(path, { method: 'DELETE' });
     await loadData();
-    setStatus({ type: 'success', text: message });
+    setToast({ type: 'success', text: message });
   }
 
   async function buscarCep(cep) {
@@ -312,7 +398,7 @@ function App() {
     const response = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
     const data = await response.json();
     if (data.erro) {
-      setStatus({ type: 'error', text: 'CEP nao encontrado.' });
+      setToast({ type: 'error', text: 'CEP nao encontrado.' });
       return;
     }
     setRevendedorForm({
@@ -385,7 +471,16 @@ function App() {
     if (type === 'categoria') setCategoriaForm(emptyCategoria);
     if (type === 'produto') setProdutoForm(emptyProduto);
     if (type === 'estoque') setEstoqueForm(emptyEstoque);
-    if (type === 'revendedor') setRevendedorForm(emptyRevendedor);
+    if (type === 'revendedor') {
+      setRevendedorForm(emptyRevendedor);
+      setFieldStatus({});
+    }
+  }
+
+  function limparRevendedorForm() {
+    setRevendedorForm(emptyRevendedor);
+    setFieldStatus({});
+    setEditing({ ...editing, revendedor: null });
   }
 
   function updateKitProduto(index, field, value) {
@@ -439,7 +534,7 @@ function App() {
             ['categorias-cadastrar', 'Cadastrar'],
           ]} onSelect={setActiveView} />
         </nav>
-        <p className={`status ${status.type}`}>{status.text}</p>
+        <p className={`status ${toast.type}`}>{toast.text || 'Pronto para operar.'}</p>
       </aside>
 
       <section className="workspace">
@@ -531,10 +626,10 @@ function App() {
                 revendedor.imagemPerfil ? <img className="product-thumb" src={imageUrl(revendedor.imagemPerfil)} alt={revendedor.nome} /> : '-',
                 revendedor.codigoDoRevendedor,
                 revendedor.nome,
-                revendedor.cpf,
-                revendedor.telefone,
+                maskCpf(revendedor.cpf),
+                maskTelefone(revendedor.telefone ?? ''),
                 `${revendedor.situacaoCadastral} / ${revendedor.cadastroAtivo ? 'Ativo' : 'Inativo'}`,
-                <ActionGroup key="actions"><IconButton icon={Edit3} label="Editar" onClick={() => editRevendedor(revendedor)} /><IconButton icon={Trash2} label="Excluir" tone="danger" onClick={() => run(() => remove(`/revendedores/${revendedor.codigoDoRevendedor}`, 'Revendedor excluido.'))} /></ActionGroup>,
+                <ActionGroup key="actions"><IconButton icon={Eye} label="Kits ativos" onClick={() => setKitsAtivosRevendedor(revendedor)} /><IconButton icon={Edit3} label="Editar" onClick={() => editRevendedor(revendedor)} /><IconButton icon={Trash2} label="Excluir" tone="danger" onClick={() => run(() => remove(`/revendedores/${revendedor.codigoDoRevendedor}`, 'Revendedor excluido.'))} /></ActionGroup>,
               ])}
             />
           </CadastroSection>
@@ -543,21 +638,24 @@ function App() {
         {activeView === 'revendedor-cadastrar' && (
           <CadastroSection title={editing.revendedor ? 'Editar revendedor' : 'Cadastrar revendedor'}>
             <form onSubmit={(event) => run(() => submitRevendedor(event))} className="form-grid wide">
-              <Field label="Nome" value={revendedorForm.nome} onChange={(nome) => setRevendedorForm({ ...revendedorForm, nome })} required />
-              <Field label="CPF" value={revendedorForm.cpf} onChange={(cpf) => setRevendedorForm({ ...revendedorForm, cpf })} required />
-              <Field label="Telefone" value={revendedorForm.telefone} onChange={(telefone) => setRevendedorForm({ ...revendedorForm, telefone })} required />
-              <Field label="Email" type="email" value={revendedorForm.email} onChange={(email) => setRevendedorForm({ ...revendedorForm, email })} />
+              <Field label="Nome" value={revendedorForm.nome} onChange={(nome) => setRevendedorField('nome', nome)} required />
+              <Field label="CPF" value={maskCpf(revendedorForm.cpf)} onChange={(cpf) => setRevendedorField('cpf', maskCpf(cpf))} onBlur={() => validarCampoRevendedor('cpf')} status={fieldStatus.cpf} required />
+              <Field label="Telefone" value={maskTelefone(revendedorForm.telefone)} onChange={(telefone) => setRevendedorField('telefone', maskTelefone(telefone))} onBlur={() => validarCampoRevendedor('telefone')} status={fieldStatus.telefone} />
+              <Field label="Email" type="email" value={revendedorForm.email} onChange={(email) => setRevendedorField('email', email)} onBlur={() => validarCampoRevendedor('email')} status={fieldStatus.email} />
               <label className="field"><span>Situacao cadastral</span><select value={revendedorForm.situacaoCadastral} onChange={(event) => setRevendedorForm({ ...revendedorForm, situacaoCadastral: event.target.value })}><option>NORMAL</option><option>NEGATIVADO</option><option>CALOTE</option></select></label>
-              <label className="field checkbox-field"><input type="checkbox" checked={revendedorForm.cadastroAtivo} onChange={(event) => setRevendedorForm({ ...revendedorForm, cadastroAtivo: event.target.checked })} /><span>Cadastro ativo</span></label>
-              <label className="field"><span>Imagem perfil</span><input type="file" accept="image/*" onChange={(event) => setRevendedorForm({ ...revendedorForm, imagemFile: event.target.files?.[0] ?? null })} /></label>
-              <Field label="Contatos referencia" value={revendedorForm.contatosDeReferencia} onChange={(contatosDeReferencia) => setRevendedorForm({ ...revendedorForm, contatosDeReferencia })} />
-              <Field label="CEP" value={revendedorForm.endereco.cep} onChange={(cep) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, cep } })} onBlur={(event) => buscarCep(event.target.value)} required />
-              <Field label="Endereco" value={revendedorForm.endereco.endereco} onChange={(endereco) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, endereco } })} required />
-              <Field label="Numero" value={revendedorForm.endereco.numero} onChange={(numero) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, numero } })} required />
-              <Field label="Bairro" value={revendedorForm.endereco.bairro} onChange={(bairro) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, bairro } })} required />
-              <Field label="Cidade" value={revendedorForm.endereco.cidade} onChange={(cidade) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, cidade } })} required />
-              <Field label="UF" value={revendedorForm.endereco.uf} onChange={(uf) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, uf } })} required />
-              <FormActions editing={Boolean(editing.revendedor)} onCancel={() => cancelEdit('revendedor')} />
+              {editing.revendedor && <label className="field checkbox-field"><input type="checkbox" checked={revendedorForm.cadastroAtivo} onChange={(event) => setRevendedorForm({ ...revendedorForm, cadastroAtivo: event.target.checked })} /><span>Cadastro ativo</span></label>}
+              <label className="field"><span>Imagem perfil ate 2MB</span><input type="file" accept="image/*" onChange={(event) => selectRevendedorImagem(event.target.files?.[0] ?? null)} /></label>
+              <TextAreaField label="Contatos referencia" value={revendedorForm.contatosDeReferencia} onChange={(contatosDeReferencia) => setRevendedorForm({ ...revendedorForm, contatosDeReferencia })} />
+              <Field label="CEP" value={revendedorForm.endereco.cep} onChange={(cep) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, cep } })} onBlur={(event) => buscarCep(event.target.value)} />
+              <Field label="Endereco" value={revendedorForm.endereco.endereco} onChange={(endereco) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, endereco } })} />
+              <Field label="Numero" value={revendedorForm.endereco.numero} onChange={(numero) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, numero } })} />
+              <Field label="Bairro" value={revendedorForm.endereco.bairro} onChange={(bairro) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, bairro } })} />
+              <Field label="Cidade" value={revendedorForm.endereco.cidade} onChange={(cidade) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, cidade } })} />
+              <Field label="UF" value={revendedorForm.endereco.uf} onChange={(uf) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, uf } })} />
+              <div className="form-actions">
+                <FormActions editing={Boolean(editing.revendedor)} onCancel={() => cancelEdit('revendedor')} />
+                <button className="secondary-button" type="button" onClick={limparRevendedorForm}><X aria-hidden="true" /><span>Limpar tudo</span></button>
+              </div>
             </form>
           </CadastroSection>
         )}
@@ -571,6 +669,14 @@ function App() {
       </section>
 
       {produtoVisualizado && <ProductModal produto={produtoVisualizado} onClose={() => setProdutoVisualizado(null)} />}
+      {kitsAtivosRevendedor && (
+        <KitsAtivosModal
+          revendedor={kitsAtivosRevendedor}
+          kits={kitsRevendedor.filter((kit) => String(kit.codigoDoRevendedor) === String(kitsAtivosRevendedor.codigoDoRevendedor))}
+          onClose={() => setKitsAtivosRevendedor(null)}
+        />
+      )}
+      {toast.type !== 'idle' && toast.text && <Toast type={toast.type} text={toast.text} onClose={() => setToast({ type: 'idle', text: '' })} />}
     </main>
   );
 }
@@ -695,8 +801,23 @@ function CadastroSection({ title, children }) {
   return <div className="cadastro-section"><header><h1>{title}</h1></header>{children}</div>;
 }
 
-function Field({ label, value, onChange, ...props }) {
-  return <label className="field"><span>{label}</span><input value={value} onChange={(event) => onChange(event.target.value)} {...props} /></label>;
+function Field({ label, value, onChange, status, ...props }) {
+  return (
+    <label className={`field ${status && status !== 'ok' ? 'invalid' : ''} ${status === 'ok' ? 'valid' : ''}`}>
+      <span>{label}</span>
+      <input value={value} onChange={(event) => onChange(event.target.value)} {...props} />
+      {status && <small>{status === 'ok' ? 'OK' : status}</small>}
+    </label>
+  );
+}
+
+function TextAreaField({ label, value, onChange, ...props }) {
+  return (
+    <label className="field textarea-field">
+      <span>{label}</span>
+      <textarea value={value} onChange={(event) => onChange(event.target.value)} {...props} />
+    </label>
+  );
 }
 
 function SelectCategoria({ label = 'Categoria', value, onChange, categorias, required = false }) {
@@ -739,6 +860,35 @@ function ProductModal({ produto, onClose }) {
           <div><dt>Valor</dt><dd>{moeda(produto.valor)}</dd></div>
         </dl>
       </div>
+    </div>
+  );
+}
+
+function KitsAtivosModal({ revendedor, kits, onClose }) {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="modal">
+        <header><div><h2>Kits ativos</h2><span>{revendedor.codigoDoRevendedor} - {revendedor.nome}</span></div><IconButton icon={X} label="Fechar" onClick={onClose} /></header>
+        <DataTable
+          columns={['Kit', 'Retirada', 'Acerto', 'Valor', 'Produtos']}
+          rows={kits.map((kit) => [
+            kit.codigoDoKit,
+            kit.dataDeRetirada,
+            kit.dataDeAcerto,
+            moeda(kit.valorTotalDeMercadoria),
+            kit.produtosRetirados.map((produto) => `${produto.codigo} (${produto.quantidade})`).join(', '),
+          ])}
+        />
+      </div>
+    </div>
+  );
+}
+
+function Toast({ type, text, onClose }) {
+  return (
+    <div className={`toast ${type}`} role="alert">
+      <span>{text}</span>
+      <button type="button" onClick={onClose} aria-label="Fechar aviso"><X aria-hidden="true" /></button>
     </div>
   );
 }
