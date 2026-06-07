@@ -18,13 +18,15 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
 button:disabled,
 input:disabled,
-select:disabled {
+select:disabled,
+textarea:disabled {
   cursor: not-allowed;
   opacity: 0.7;
 }
@@ -71,12 +73,14 @@ select:disabled {
   font-size: 0.9rem;
 }
 
-.tab-list {
+.tab-list,
+.menu-list {
   display: grid;
   gap: 8px;
 }
 
-.tab-list button {
+.tab-list button,
+.menu-list button {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -92,17 +96,52 @@ select:disabled {
 }
 
 .tab-list button:hover,
-.tab-list button.active {
+.tab-list button.active,
+.menu-list button:hover,
+.menu-list button.active {
   color: #0f172a;
   background: #f8fafc;
 }
 
 .tab-list svg,
+.menu-list svg,
 .submit-button svg,
 .icon-button svg {
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
+}
+
+.menu-group {
+  display: grid;
+  gap: 5px;
+}
+
+.menu-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 4px;
+  color: #bfdbfe;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.menu-title svg {
+  width: 16px;
+  height: 16px;
+}
+
+.submenu {
+  display: grid;
+  gap: 4px;
+  padding-left: 14px;
+}
+
+.submenu button {
+  min-height: 36px;
+  padding: 8px 12px;
 }
 
 .status {
@@ -208,6 +247,17 @@ h1 {
   font-weight: 700;
 }
 
+.total-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 6px;
+  color: #0f172a;
+  background: #dbeafe;
+  white-space: nowrap;
+}
+
 .field {
   display: grid;
   gap: 6px;
@@ -221,7 +271,8 @@ h1 {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   min-height: 42px;
   padding: 8px 10px;
@@ -231,10 +282,54 @@ h1 {
   background: #ffffff;
 }
 
+.checkbox-field {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  min-height: 42px;
+  padding-top: 22px;
+}
+
+.checkbox-field input {
+  width: 18px;
+  min-height: 18px;
+}
+
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   outline: 3px solid #bfdbfe;
   border-color: #2563eb;
+}
+
+.field textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.textarea-field {
+  grid-column: span 2;
+}
+
+.field small {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.field.valid input {
+  border-color: #16a34a;
+}
+
+.field.valid small {
+  color: #15803d;
+}
+
+.field.invalid input {
+  border-color: #dc2626;
+}
+
+.field.invalid small {
+  color: #b91c1c;
 }
 
 .submit-button,
@@ -376,6 +471,52 @@ tr:last-child td {
   box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
 }
 
+.toast {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(420px, calc(100vw - 36px));
+  padding: 14px 14px 14px 16px;
+  border-radius: 8px;
+  color: #0f172a;
+  background: #e2e8f0;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.22);
+  font-weight: 700;
+}
+
+.toast.success {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.toast.error {
+  color: #7f1d1d;
+  background: #fee2e2;
+}
+
+.toast button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+}
+
+.toast svg {
+  width: 16px;
+  height: 16px;
+}
+
 .modal header {
   display: flex;
   align-items: center;
@@ -477,5 +618,9 @@ tr:last-child td {
 
   .product-details {
     grid-template-columns: 1fr;
+  }
+
+  .textarea-field {
+    grid-column: span 1;
   }
 }
