@@ -262,6 +262,7 @@ h1 {
   display: grid;
   gap: 6px;
   min-width: 0;
+  position: relative;
 }
 
 .field span {
@@ -311,9 +312,14 @@ h1 {
 }
 
 .field small {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 2px);
+  z-index: 1;
   color: #64748b;
   font-size: 0.78rem;
   font-weight: 700;
+  line-height: 1.1;
 }
 
 .field.valid input {

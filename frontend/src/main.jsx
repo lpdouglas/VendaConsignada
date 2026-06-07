@@ -103,6 +103,16 @@ function moeda(value) {
   return Number(value ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function productInputValue(codigo, produtoMap) {
+  if (!codigo) return '';
+  const produto = produtoMap.get(codigo);
+  return produto ? `${codigo} - ${produto.nome}` : codigo;
+}
+
+function selectedProductCode(value) {
+  return String(value ?? '').split(' - ')[0].trim();
+}
+
 async function request(path, options = {}) {
   const isFormData = options.body instanceof FormData;
   const response = await fetch(`${API_URL}${path}`, {
@@ -142,6 +152,7 @@ function App() {
   const [produtoVisualizado, setProdutoVisualizado] = useState(null);
   const [kitsAtivosRevendedor, setKitsAtivosRevendedor] = useState(null);
   const [fieldStatus, setFieldStatus] = useState({});
+  const [kitAttempted, setKitAttempted] = useState(false);
   const [toast, setToast] = useState({ type: 'idle', text: 'Conectando com a API em localhost:8080' });
 
   const produtoMap = useMemo(() => new Map(produtos.map((produto) => [produto.codigo, produto])), [produtos]);
@@ -191,8 +202,9 @@ function App() {
 
     const usados = {};
     for (const produto of kitForm.produtosRetirados) {
-      if (!produto.codigo) continue;
-      usados[produto.codigo] = (usados[produto.codigo] ?? 0) + Number(produto.quantidade || 0);
+      const codigo = selectedProductCode(produto.codigo);
+      if (!codigo) continue;
+      usados[codigo] = (usados[codigo] ?? 0) + Number(produto.quantidade || 0);
     }
 
     for (const [codigo, quantidade] of Object.entries(usados)) {
@@ -260,10 +272,10 @@ function App() {
       updates.cpf = isValidCpf(revendedorForm.cpf) ? 'ok' : 'CPF invalido';
     }
     if (field === 'email') {
-      updates.email = isValidEmail(revendedorForm.email) ? 'ok' : 'Email invalido';
+      updates.email = !revendedorForm.email ? '' : (isValidEmail(revendedorForm.email) ? 'ok' : 'Email invalido');
     }
     if (field === 'telefone') {
-      updates.telefone = isValidTelefone(revendedorForm.telefone) ? 'ok' : 'Telefone invalido';
+      updates.telefone = !revendedorForm.telefone ? '' : (isValidTelefone(revendedorForm.telefone) ? 'ok' : 'Telefone invalido');
     }
     setFieldStatus(updates);
   }
@@ -275,6 +287,7 @@ function App() {
     }
     if (file.size > MAX_IMAGE_SIZE) {
       setRevendedorForm({ ...revendedorForm, imagemFile: null });
+      limparRevendedorImagemInput();
       setToast({ type: 'error', text: 'Imagem deve ter no maximo 2MB.' });
       return;
     }
@@ -367,6 +380,7 @@ function App() {
 
   async function submitKitRevendedor(event) {
     event.preventDefault();
+    setKitAttempted(true);
     if (!kitValidation.valid) {
       setToast({ type: 'error', text: kitValidation.errors[0] });
       return;
@@ -377,11 +391,12 @@ function App() {
       dataDeRetirada: kitForm.dataDeRetirada,
       dataDeAcerto: kitForm.dataDeAcerto,
       produtosRetirados: kitForm.produtosRetirados
-        .filter((produto) => produto.codigo)
-        .map((produto) => ({ codigo: produto.codigo, quantidade: Number(produto.quantidade) })),
+        .map((produto) => ({ codigo: selectedProductCode(produto.codigo), quantidade: Number(produto.quantidade) }))
+        .filter((produto) => produto.codigo),
     };
     const salvo = await request('/kits-revendedor', { method: 'POST', body: JSON.stringify(payload) });
     setKitForm({ ...emptyKitRevendedor, dataDeRetirada: new Date().toISOString().slice(0, 10), dataDeAcerto: addDays(new Date(), 60).toISOString().slice(0, 10) });
+    setKitAttempted(false);
     await loadData();
     setToast({ type: 'success', text: `Kit ${salvo.codigoDoKit} gerado e estoque atualizado.` });
   }
@@ -481,6 +496,7 @@ function App() {
     setRevendedorForm(emptyRevendedor);
     setFieldStatus({});
     setEditing({ ...editing, revendedor: null });
+    limparRevendedorImagemInput();
   }
 
   function updateKitProduto(index, field, value) {
@@ -503,6 +519,11 @@ function App() {
 
   function setDataRetirada(dataDeRetirada) {
     setKitForm({ ...kitForm, dataDeRetirada, dataDeAcerto: addDays(new Date(`${dataDeRetirada}T00:00:00`), 60).toISOString().slice(0, 10) });
+  }
+
+  function limparRevendedorImagemInput() {
+    const input = document.getElementById('revendedor-imagem');
+    if (input) input.value = '';
   }
 
   return (
@@ -562,18 +583,24 @@ function App() {
                   <div className="kit-product-row" key={index}>
                     <label className="field">
                       <span>Buscar produto</span>
-                      <select value={item.codigo} onChange={(event) => updateKitProduto(index, 'codigo', event.target.value)} required>
-                        <option value="">Selecione</option>
-                        {estoque.map((estoqueItem) => {
-                          const produto = produtoMap.get(estoqueItem.codigoDoProduto);
-                          return (
-                            <option key={estoqueItem.codigoDoProduto} value={estoqueItem.codigoDoProduto}>
-                              {estoqueItem.codigoDoProduto} - {produto?.nome ?? 'Sem nome'} ({estoqueItem.quantidade} em estoque)
-                            </option>
-                          );
-                        })}
-                      </select>
+                      <input
+                        list="produtos-estoque-list"
+                        value={productInputValue(item.codigo, produtoMap)}
+                        onChange={(event) => updateKitProduto(index, 'codigo', selectedProductCode(event.target.value))}
+                        placeholder="Digite codigo ou nome"
+                        required
+                      />
                     </label>
+                    <datalist id="produtos-estoque-list">
+                      {estoque.map((estoqueItem) => {
+                        const produto = produtoMap.get(estoqueItem.codigoDoProduto);
+                        return (
+                          <option key={estoqueItem.codigoDoProduto} value={`${estoqueItem.codigoDoProduto} - ${produto?.nome ?? 'Sem nome'}`}>
+                            {estoqueItem.quantidade} em estoque
+                          </option>
+                        );
+                      })}
+                    </datalist>
                     <Field label="Quantidade" type="number" min="1" value={item.quantidade} onChange={(quantidade) => updateKitProduto(index, 'quantidade', quantidade)} required />
                     <button className="secondary-button compact-button" type="button" onClick={() => removeKitProduto(index)}>
                       <X aria-hidden="true" />
@@ -588,12 +615,12 @@ function App() {
                   <span>Produto</span>
                 </button>
                 <strong className="total-pill">Total: {moeda(kitValorTotal)}</strong>
-                <button className="submit-button" type="submit" disabled={!kitValidation.valid}>
+                <button className="submit-button" type="submit">
                   <Save aria-hidden="true" />
                   <span>Gerar kit</span>
                 </button>
               </div>
-              {kitValidation.errors.length > 0 && (
+              {kitAttempted && kitValidation.errors.length > 0 && (
                 <div className="validation-box">{kitValidation.errors.map((error) => <span key={error}>{error}</span>)}</div>
               )}
             </form>
@@ -642,9 +669,8 @@ function App() {
               <Field label="CPF" value={maskCpf(revendedorForm.cpf)} onChange={(cpf) => setRevendedorField('cpf', maskCpf(cpf))} onBlur={() => validarCampoRevendedor('cpf')} status={fieldStatus.cpf} required />
               <Field label="Telefone" value={maskTelefone(revendedorForm.telefone)} onChange={(telefone) => setRevendedorField('telefone', maskTelefone(telefone))} onBlur={() => validarCampoRevendedor('telefone')} status={fieldStatus.telefone} />
               <Field label="Email" type="email" value={revendedorForm.email} onChange={(email) => setRevendedorField('email', email)} onBlur={() => validarCampoRevendedor('email')} status={fieldStatus.email} />
-              <label className="field"><span>Situacao cadastral</span><select value={revendedorForm.situacaoCadastral} onChange={(event) => setRevendedorForm({ ...revendedorForm, situacaoCadastral: event.target.value })}><option>NORMAL</option><option>NEGATIVADO</option><option>CALOTE</option></select></label>
               {editing.revendedor && <label className="field checkbox-field"><input type="checkbox" checked={revendedorForm.cadastroAtivo} onChange={(event) => setRevendedorForm({ ...revendedorForm, cadastroAtivo: event.target.checked })} /><span>Cadastro ativo</span></label>}
-              <label className="field"><span>Imagem perfil ate 2MB</span><input type="file" accept="image/*" onChange={(event) => selectRevendedorImagem(event.target.files?.[0] ?? null)} /></label>
+              <label className="field"><span>Imagem perfil ate 2MB</span><input id="revendedor-imagem" type="file" accept="image/*" onChange={(event) => selectRevendedorImagem(event.target.files?.[0] ?? null)} /></label>
               <TextAreaField label="Contatos referencia" value={revendedorForm.contatosDeReferencia} onChange={(contatosDeReferencia) => setRevendedorForm({ ...revendedorForm, contatosDeReferencia })} />
               <Field label="CEP" value={revendedorForm.endereco.cep} onChange={(cep) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, cep } })} onBlur={(event) => buscarCep(event.target.value)} />
               <Field label="Endereco" value={revendedorForm.endereco.endereco} onChange={(endereco) => setRevendedorForm({ ...revendedorForm, endereco: { ...revendedorForm.endereco, endereco } })} />
@@ -806,7 +832,7 @@ function Field({ label, value, onChange, status, ...props }) {
     <label className={`field ${status && status !== 'ok' ? 'invalid' : ''} ${status === 'ok' ? 'valid' : ''}`}>
       <span>{label}</span>
       <input value={value} onChange={(event) => onChange(event.target.value)} {...props} />
-      {status && <small>{status === 'ok' ? 'OK' : status}</small>}
+      {status && status !== 'ok' && <small>{status}</small>}
     </label>
   );
 }
